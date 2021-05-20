@@ -21,8 +21,8 @@ class HomeModel:
                  tenor,  # tenor of the model in years
                  sqft):
 
-        self.listvalue = listvalue
-        self.interestrate = interestrate
+        self.list_value = listvalue
+        self.interest_rate = interestrate
         self.discount_rate = discount_rate
         self.tax_rate = tax_rate
         self.tax_pay_freq = tax_pay_freq
@@ -31,23 +31,27 @@ class HomeModel:
         self.property_proj_rate = property_proj_rate
         self.tenor = tenor
         self.sqft = sqft
+        self.tax_df = self.get_cf_dataframe(self.generic_df_curve(self.discount_rate),
+                                            self.generic_proj_curve(self.tax_projection_rate),
+                                            self.vanilla_cf(frequency=self.tax_pay_freq,
+                                                            period_cf=self.tax_rate * \
+                                                                      self.list_value * \
+                                                                      self.tax_pay_freq / 12))
 
     def generic_cf_dict(self, frequency=12):
         length = range(int(frequency / 12), self.tenor * frequency + 1)  # create a vector schedule of every month
         cf_library = {
             i: 0 for i in length
         }
-
         return cf_library
 
     def generic_df_curve(self, generic_discount_rate):
         dfcurve_ = self.generic_cf_dict()
         for period in dfcurve_:
             dfcurve_[period] = 1 / (1 + generic_discount_rate / 12) ** period
-
         return dfcurve_
 
-    def generic_projection_curve(self, generic_projection_rate):
+    def generic_proj_curve(self, generic_projection_rate):
         projection_curve = self.generic_cf_dict()
         for period in projection_curve:
             projection_curve[period] = (1 + generic_projection_rate / 12) ** period
@@ -62,37 +66,36 @@ class HomeModel:
 
         return vanilla_cf_
 
-    def calculate_projection(self, cashflows, projection_curve):
+    def calc_proj(self, cashflows, projection_curve):
         projected_cashflows = {
             cf_event: cashflows[cf_event] * projection_curve[cf_event] for cf_event in cashflows
         }
-
         return projected_cashflows
 
-    def calculate_discount(self, cashflows, discount_curve):
+    def calc_disc(self, cashflows, discount_curve):
         discounted_cashflows = {
             cf_event: cashflows[cf_event] * discount_curve[cf_event] for cf_event in cashflows
         }
-
         return discounted_cashflows
+
+    def get_cf_dataframe(self, discount_curve, projection_curve, cash_flows):
+        df = pd.DataFrame(
+            {
+                'DF Curve': discount_curve,
+                'Proj Curve': projection_curve,
+                'Cashflows': cash_flows,
+                'Fwd Cashflows': self.calc_proj(cash_flows, projection_curve),
+                'Disc Fwd Cashflows': self.calc_disc(self.calc_proj(cash_flows, projection_curve), discount_curve)
+            })
+        return df
 
     def carry_income(self, multiplier):
         income_schedule = self.generic_cf_dict()
         for payment in income_schedule:
             income_schedule[payment] = self.sqft * multiplier
-        fwd_inc_schedule = self.calculate_projection(income_schedule,
-                                                     self.generic_projection_curve(
-                                                         self.carry_proj_rate
-                                                     ))
-        disc_fwd_inc_schedule = self.calculate_discount(fwd_inc_schedule,
-                                                        self.generic_df_curve(self.discount_rate))
-
+        fwd_inc_schedule = self.calc_proj(income_schedule, self.generic_proj_curve(self.carry_proj_rate))
+        disc_fwd_inc_schedule = self.calc_disc(fwd_inc_schedule, self.generic_df_curve(self.discount_rate))
         return disc_fwd_inc_schedule
-
-    def pricepersqft(self):
-        pricepersqft_ = self.listvalue / self.sqft
-
-        return pricepersqft_
 
 
 newproperty = HomeModel(listvalue=400000,
@@ -106,27 +109,11 @@ newproperty = HomeModel(listvalue=400000,
                         sqft=1000,
                         tenor=10)
 
-
-# Assembling the various dataframes which are inherent to specific cash flows. They may require specific discount and
-# projection curves that are based on assumptions defined in the new property class.
-
-# TAX LIABILITY CASH FLOWS
-tax_df = pd.DataFrame(
-    {
-        'DF Curve': newproperty.generic_df_curve(newproperty.discount_rate),
-        'Projection Curve': newproperty.generic_projection_curve(newproperty.tax_projection_rate),
-        'Cashflows': newproperty.vanilla_cf(
-            frequency=newproperty.tax_pay_freq,
-            period_cf=newproperty.tax_rate * newproperty.listvalue * newproperty.tax_pay_freq / 12),
-    })
-
-tax_df['Fwd Cashflows'] = tax_df['Cashflows'] * tax_df['Projection Curve']
-tax_df['PV Fwd Cashflows'] = tax_df['Fwd Cashflows'] * tax_df['DF Curve']
-
+print(newproperty.tax_df)
 carry_df = pd.DataFrame(
     {
         'DF Curve': newproperty.generic_df_curve(newproperty.discount_rate),
-        'Projection Curve': newproperty.generic_projection_curve(newproperty.carry_proj_rate),
+        'Projection Curve': newproperty.generic_proj_curve(newproperty.carry_proj_rate),
         'Cashflows': 0,
         'Fwd Cashflows': 0,
         'PV Fwd Cashflows': 0
@@ -136,7 +123,7 @@ carry_df = pd.DataFrame(
 principal_df = pd.DataFrame(
     {
         'DF Curve': newproperty.generic_df_curve(newproperty.discount_rate),
-        'Projection Curve': newproperty.generic_projection_curve(0.00),
+        'Projection Curve': newproperty.generic_proj_curve(0.00),
         'Cashflows': 0,
         'Fwd Cashflows': 0,
         'PV Fwd Cashflows': 0
@@ -146,7 +133,7 @@ principal_df = pd.DataFrame(
 interest_df = pd.DataFrame(
     {
         'DF Curve': newproperty.generic_df_curve(newproperty.discount_rate),
-        'Projection Curve': newproperty.generic_projection_curve(0.00),
+        'Projection Curve': newproperty.generic_proj_curve(0.00),
         'Cashflows': 0,
         'Fwd Cashflows': 0,
         'PV Fwd Cashflows': 0
@@ -156,12 +143,8 @@ interest_df = pd.DataFrame(
 property_df = pd.DataFrame(
     {
         'DF Curve': newproperty.generic_df_curve(newproperty.discount_rate),
-        'Projection Curve': newproperty.generic_projection_curve(newproperty.property_proj_rate),
+        'Projection Curve': newproperty.generic_proj_curve(newproperty.property_proj_rate),
         'Cashflows': 0,
         'Fwd Cashflows': 0,
         'PV Fwd Cashflows:': 0
     })
-
-master_cf = pd.DataFrame(index=range(1, newproperty.tenor * 12 + 1))
-master_cf['Tax CF'] = tax_df['PV Fwd Cashflows']
-master_cf.describe()
