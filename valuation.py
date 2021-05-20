@@ -18,8 +18,9 @@ class HomeModel:
                  property_proj_rate,  # general projection rate for property value
                  tax_rate,  # per annum tax rate
                  tax_pay_freq,  # tax payment frequency
-                 tenor,  # tenor of the model in years
-                 sqft):
+                 tenor,  # tenor of the loan
+                 down_percent,  # down payment percentage on the mortgage == initial equity in the property
+                 down_pay_freq):  # frequency of down payment installations
 
         self.list_value = listvalue
         self.interest_rate = interest_rate
@@ -30,16 +31,21 @@ class HomeModel:
         self.carry_proj_rate = carry_proj_rate
         self.property_proj_rate = property_proj_rate
         self.tenor = tenor
-        self.sqft = sqft
+        self.down_percent = down_percent
+        self.down_pay_freq = down_pay_freq
+        self.loan_amount = self.list_value * self.down_percent
         self.tax_df = self.get_cf_dataframe(self.generic_df_curve(self.discount_rate),
                                             self.generic_proj_curve(self.tax_projection_rate),
                                             self.vanilla_cf(frequency=self.tax_pay_freq,
-                                                            period_cf=self.tax_rate * \
-                                                                      self.list_value * \
-                                                                      self.tax_pay_freq / 12))
+                                                            period_cf=self.tax_rate * self.list_value * self.tax_pay_freq / 12))
+
+        self.mortgage_payments = self.vanilla_cf(frequency=self.down_pay_freq,
+                                                 period_cf=self.down_percent * self.list_value / (-12 * self.down_pay_freq * self.tenor))
+
+        self.mortgage_schedule = self.get_mortgage_schedule()
 
     def generic_cf_dict(self, frequency=12):
-        length = range(int(frequency / 12), self.tenor * frequency + 1)  # create a vector schedule of every month
+        length = range(int(frequency / 12), self.tenor * frequency + 1)
         cf_library = {
             i: 0 for i in length
         }
@@ -55,7 +61,6 @@ class HomeModel:
         projection_curve = self.generic_cf_dict()
         for period in projection_curve:
             projection_curve[period] = (1 + generic_projection_rate / 12) ** period
-
         return projection_curve
 
     def vanilla_cf(self, frequency=12, period_cf=0):
@@ -63,7 +68,6 @@ class HomeModel:
         for period in vanilla_cf_.keys():
             if period % frequency == 0:
                 vanilla_cf_[period] = period_cf
-
         return vanilla_cf_
 
     def calc_proj(self, cashflows, projection_curve):
@@ -89,24 +93,35 @@ class HomeModel:
             })
         return df
 
-    def carry_income(self, multiplier):
-        income_schedule = self.generic_cf_dict()
-        for payment in income_schedule:
-            income_schedule[payment] = self.sqft * multiplier
-        fwd_inc_schedule = self.calc_proj(income_schedule, self.generic_proj_curve(self.carry_proj_rate))
-        disc_fwd_inc_schedule = self.calc_disc(fwd_inc_schedule, self.generic_df_curve(self.discount_rate))
-        return disc_fwd_inc_schedule
+    def get_mortgage_schedule(self):
+        df = pd.DataFrame(
+            {
+                'DF Curve': self.generic_df_curve(self.discount_rate),
+                'Mortgage Payments': self.mortgage_payments,
+            }
+        )
+        df['Accumulated Payments'] = df.index.values * df['Mortgage Payments']
+        df['Remaining Loan'] = df['Accumulated Payments'] + self.loan_amount
+        df['Interest Payments'] = df['Remaining Loan'] * self.interest_rate / 12
+        df['Total Payments'] = df['Interest Payments'] + df['Mortgage Payments']
+        return df
 
 
-NewProperty = HomeModel(listvalue=400000,
-                        interest_rate=-0.050,
-                        discount_rate=.0160,
-                        tax_rate=-0.05,
-                        tax_pay_freq=1,
-                        tax_proj_rate=0.025,
-                        carry_proj_rate=0.05,
-                        property_proj_rate=0.07,
-                        sqft=1000,
-                        tenor=10)
+parameters = {
+    'listvalue': 100000,
+    'interest_rate': -0.05,
+    'discount_rate': 0.016,
+    'tax_rate': -0.05,
+    'tax_pay_freq': 1,
+    'tax_proj_rate': 0.025,
+    'carry_proj_rate': 0.05,
+    'property_proj_rate': 0.07,
+    'tenor': 10,
+    'down_percent': 0.5,
+    'down_pay_freq': 1
+}
 
+NewProperty = HomeModel(**parameters)
 print(NewProperty.tax_df)
+print(NewProperty.mortgage_schedule)
+print(NewProperty.mortgage_schedule['Total Payments'].sum())
