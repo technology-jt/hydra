@@ -11,18 +11,18 @@ pd.set_option('display.max_colwidth', None)
 class HomeModel:
     def __init__(self,
                  listvalue,  # total property value
-                 interestrate,  # per annum mortgage rate
+                 interest_rate,  # per annum mortgage rate
                  discount_rate,  # general risk free rate
                  tax_proj_rate,  # general projection rate for tax liabilities
                  carry_proj_rate,  # general projection rate for carry income
                  property_proj_rate,  # general projection rate for property value
                  tax_rate,  # per annum tax rate
-                 tax_pay_freq,
+                 tax_pay_freq,  # tax payment frequency
                  tenor,  # tenor of the model in years
                  sqft):
 
         self.list_value = listvalue
-        self.interest_rate = interestrate
+        self.interest_rate = interest_rate
         self.discount_rate = discount_rate
         self.tax_rate = tax_rate
         self.tax_pay_freq = tax_pay_freq
@@ -98,8 +98,8 @@ class HomeModel:
         return disc_fwd_inc_schedule
 
 
-newproperty = HomeModel(listvalue=400000,
-                        interestrate=-0.050,
+NewProperty = HomeModel(listvalue=400000,
+                        interest_rate=-0.050,
                         discount_rate=.0160,
                         tax_rate=-0.05,
                         tax_pay_freq=1,
@@ -109,42 +109,4 @@ newproperty = HomeModel(listvalue=400000,
                         sqft=1000,
                         tenor=10)
 
-print(newproperty.tax_df)
-carry_df = pd.DataFrame(
-    {
-        'DF Curve': newproperty.generic_df_curve(newproperty.discount_rate),
-        'Projection Curve': newproperty.generic_proj_curve(newproperty.carry_proj_rate),
-        'Cashflows': 0,
-        'Fwd Cashflows': 0,
-        'PV Fwd Cashflows': 0
-    })
-
-# PRINCIPAL PAYMENT CASHFLOWS
-principal_df = pd.DataFrame(
-    {
-        'DF Curve': newproperty.generic_df_curve(newproperty.discount_rate),
-        'Projection Curve': newproperty.generic_proj_curve(0.00),
-        'Cashflows': 0,
-        'Fwd Cashflows': 0,
-        'PV Fwd Cashflows': 0
-    })
-
-# INTEREST PAYMENT CASHFLOWS
-interest_df = pd.DataFrame(
-    {
-        'DF Curve': newproperty.generic_df_curve(newproperty.discount_rate),
-        'Projection Curve': newproperty.generic_proj_curve(0.00),
-        'Cashflows': 0,
-        'Fwd Cashflows': 0,
-        'PV Fwd Cashflows': 0
-    })
-
-# PROPERTY VALUE CASHFLOWS
-property_df = pd.DataFrame(
-    {
-        'DF Curve': newproperty.generic_df_curve(newproperty.discount_rate),
-        'Projection Curve': newproperty.generic_proj_curve(newproperty.property_proj_rate),
-        'Cashflows': 0,
-        'Fwd Cashflows': 0,
-        'PV Fwd Cashflows:': 0
-    })
+print(NewProperty.tax_df)
